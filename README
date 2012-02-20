@@ -1,9 +1,80 @@
-Dearborn Group Technology has released under GPL this plugin
-for Wireshark. It decodes the protocol used by their Gryphon
-automotive network tool.
+Very basic BMX6 (v16) dissector for Wireshark.
 
-The plugin decodes the communication protocol, but not any
-vehicle network messages.
+To include the dissector you will need to place the dissector code on plugins/bmx6 folder.
 
-Dearborn Group Technology can be found at http://www.dgtech.com/
-The author is Steve Limkemann <stevelim@dgtech.com>
+Also, you will need to modify the following existing Wireshark files:
+	configure.in
+	CMakeLists.txt
+	epan/Makefile.am
+	Makefile.am
+	packaging/nsis/Makefile.nmake
+	packaging/nsis/wireshark.nsi
+	plugins/Makefile.am
+	plugins/Makefile.nmake
+
+1  Changes to plugins/Makefile.am
+
+The plugins directory contains a Makefile.am.  You need to change the
+SUBDIRS directive to reflect the addition of bmx6 plugin:
+
+SUBDIRS = $(_CUSTOM_SUBDIRS_) \
+	...
+	gryphon \
+	irda \
+	bmx6 \
+
+3.2 Changes to plugins/Makefile.nmake
+
+In plugins/Makefile.nmake you need to add to the PLUGINS_LIST  
+(in alphabetical order) bmx6 dissector (actually:
+the name of the plugins sub-directory which contains your dissector).
+
+3.3 Changes to the top level Makefile.am
+
+Add bmx6 plugin (in alphabetical order) to the plugin_ldadd:
+
+if HAVE_PLUGINS
+-include plugins/Custom.make
+plugin_ldadd = $(_CUSTOM_plugin_ldadd_) \
+	-dlopen plugins/asn1/asn1.la \
+	-dlopen plugins/bmx6/bmx6.la \
+	-dlopen plugins/docsis/docsis.la \
+	...
+
+3.4  Changes to the top level configure.in
+
+You need to add bmx6 plugin's Makefile (in alphbetical order) to the AC_OUTPUT
+rule in the configure.in
+
+AC_OUTPUT(
+  ...
+  plugins/Makefile
+  plugins/asn1/Makefile
+  plugins/bmx6/Makefile
+  plugins/docsis/Makefile
+
+  ...
+  ,)
+
+3.5  Changes to epan/Makefile.am
+
+Add the relative path of bmx6 plugin (in alphbetical order) to plugin_src:
+
+plugin_src = \
+	../plugins/asn1/packet-asn1.c \
+	../plugins/bmx6/packet-bmx6.c \
+	../plugins/docsis/packet-bintrngreq.c \
+       ...
+
+3.6  Changes to CMakeLists.txt
+
+Add bmx6 plugin (in alphabetical order) to the PLUGIN_SRC_DIRS:
+
+if(ENABLE_PLUGINS)
+	set(HAVE_PLUGINS 1)
+	set(PLUGIN_DIR="${DATAFILE_DIR}/plugins/${CPACK_PACKAGE_VERSION}")
+	set(PLUGIN_SRC_DIRS
+		plugins/asn1
+		plugins/bmx6
+		plugins/docsis
+           ...

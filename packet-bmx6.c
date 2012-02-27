@@ -30,8 +30,10 @@
 #include <epan/packet.h>
 #include "packet-bmx6.h"
 
-#define PROTO_TAG_BMX	"BMX6"
+//TODO delete
+#include <stdio.h>
 
+#define PROTO_TAG_BMX	"BMX6"
 static const value_string bmx_frame_types[] = {
     { FRAME_TYPE_RSVD0, "RSVD frame" },
     { FRAME_TYPE_PROBLEM_ADV, "Problem advertisement frame" },
@@ -80,7 +82,6 @@ static int hf_bmx6_frame_is_short = -1;
 static int hf_bmx6_frame_is_relevant = -1;
 static int hf_bmx6_frame_length8 = -1;
 static int hf_bmx6_frame_length16 = -1;
-static int hf_bmx6_reserved_length = -1;
 static int hf_bmx6_frame_type = -1;
 static int hf_bmx6_hello_sqn = -1;
 static int hf_bmx6_tlv_type = -1;
@@ -306,7 +307,7 @@ static int
 dissect_bmx6_tlv(tvbuff_t *tvb, proto_item *tlv_item, int offset){
 //gboolean 	tvb_bytes_exist (const tvbuff_t *, const gint offset, const gint length)
 
-	guint8 type;
+	guint8 type, is_short;
 	guint16 length;
 	int bit_offset, num, header_length;
 	proto_tree *tlv, *tlv_header;
@@ -361,28 +362,31 @@ dissect_bmx6_tlv(tvbuff_t *tvb, proto_item *tlv_item, int offset){
 	tlv_header= proto_item_add_subtree(th_item, ett_bmx6_tlv_header);
 	//is_short
 	bit_offset = offset*8;
-	ti = proto_tree_add_bits_item(tlv_header, hf_bmx6_frame_is_short, tvb, bit_offset, 1, FALSE);
+	is_short = tvb_get_bits8(tvb, bit_offset, 1);
+	proto_tree_add_bits_item(tlv_header, hf_bmx6_frame_is_short, tvb, bit_offset, 1, FALSE);
 	//is_relevant
 	proto_tree_add_bits_item(tlv_header, hf_bmx6_frame_is_relevant, tvb, bit_offset+1, 1, FALSE);
 	//type
 	proto_tree_add_item(tlv_header, hf_bmx6_tlv_type, tvb, offset, 1, ENC_BIG_ENDIAN);
 	offset++;
 	
+	
 	//length
-	if(ti->finfo->value.value.uinteger){
+	if(is_short){
 		length = tvb_get_guint8(tvb, offset);
 		proto_tree_add_item(tlv_header, hf_bmx6_frame_length8, tvb, offset, 1, ENC_BIG_ENDIAN);
 		offset++;
 		header_length = FRAME_HEADER_SHORT_LEN;
 	}else{
-		//reserved
-		proto_tree_add_item(tlv_header, hf_bmx6_reserved_length, tvb, offset, 1, ENC_BIG_ENDIAN);
+		//TODO reserved
+		proto_tree_add_text(tlv_header, tvb, offset, 1, "Reserved bytes");
 		offset++;
 		length = tvb_get_ntohs(tvb, offset);
 		proto_tree_add_item(tlv_header, hf_bmx6_frame_length16, tvb, offset, 2, ENC_BIG_ENDIAN);
 		offset+=2;
 		header_length = FRAME_HEADER_LONG_LEN;
 	}
+	
 	proto_item_set_len(th_item, header_length);
 	proto_item_set_len(tlv_item, length);
 	
@@ -402,6 +406,7 @@ dissect_bmx6_tlv(tvbuff_t *tvb, proto_item *tlv_item, int offset){
 		break;
 	}
 	
+	proto_tree_add_text(tlv, tvb, offset-1, 1, "Fin_tlv dissection");
 	return length;
 }
 
@@ -477,6 +482,7 @@ dissect_desc_adv16(tvbuff_t *tvb, proto_tree *tree, int offset){
 		processed +=n;
 		i++;
 	}
+	proto_tree_add_text(tree, tvb, offset-1, 1, "fin desc dissection");
 }
 
 static void
@@ -607,136 +613,134 @@ dissect_ogm_ack(tvbuff_t *tvb, proto_tree *tree, int offset){
 }
 
 static int
-dissect_bmx6_frame(tvbuff_t *tvb, proto_item *frame,int version, int offset)
+dissect_bmx6_frame(tvbuff_t *tvb, proto_item *frame_item,int version, unsigned int offset)
 {
-//gboolean 	tvb_bytes_exist (const tvbuff_t *, const gint offset, const gint length)
-
-
-	guint8 type;
-	proto_tree *frame1, *frame_header;
-	proto_item *ti, *fh_item;
-	//Length
+	guint8 type, is_short;
 	guint16 initial,length;
-	int bit_offset, num, header_length;
+	unsigned int bit_offset, num, header_length;
+	proto_tree *frame_tree, *header_tree;
+	proto_item *header_item;
 	
 	initial=offset;
 	//Add the proper subtree:
 	type = tvb_get_guint8(tvb, offset) & 0x1f;
-	proto_item_append_text(frame, val_to_str(type, bmx_frame_types, "Unknown frame type: %u"));
+	proto_item_append_text(frame_item, val_to_str(type, bmx_frame_types, "Unknown frame type: %u"));
 	switch(type) {
 	case FRAME_TYPE_HELLO_ADV:
-		frame1 = proto_item_add_subtree(frame, ett_bmx6_hello_adv);
+		frame_tree = proto_item_add_subtree(frame_item, ett_bmx6_hello_adv);
 		break;
 	case FRAME_TYPE_LINK_REQ:
-		frame1 = proto_item_add_subtree(frame, ett_bmx6_link_req);
+		frame_tree = proto_item_add_subtree(frame_item, ett_bmx6_link_req);
 		break;
 	case FRAME_TYPE_LINK_ADV:
-		frame1 = proto_item_add_subtree(frame, ett_bmx6_link_adv);
+		frame_tree = proto_item_add_subtree(frame_item, ett_bmx6_link_adv);
 		break;
 	case FRAME_TYPE_DEV_REQ:
-		frame1 = proto_item_add_subtree(frame, ett_bmx6_dev_req);
+		frame_tree = proto_item_add_subtree(frame_item, ett_bmx6_dev_req);
 		break;
 	case FRAME_TYPE_DEV_ADV:
-		frame1 = proto_item_add_subtree(frame, ett_bmx6_dev_adv);
+		frame_tree = proto_item_add_subtree(frame_item, ett_bmx6_dev_adv);
 		break;
 	case FRAME_TYPE_HASH_REQ:
-		frame1 = proto_item_add_subtree(frame, ett_bmx6_hash_req);
+		frame_tree = proto_item_add_subtree(frame_item, ett_bmx6_hash_req);
 		break;
 	case FRAME_TYPE_HASH_ADV:
-		frame1 = proto_item_add_subtree(frame, ett_bmx6_hash_adv);
+		frame_tree = proto_item_add_subtree(frame_item, ett_bmx6_hash_adv);
 		break;
 	case FRAME_TYPE_DESC_REQ:
-		frame1 = proto_item_add_subtree(frame, ett_bmx6_desc_req);
+		frame_tree = proto_item_add_subtree(frame_item, ett_bmx6_desc_req);
 		break;
 	case FRAME_TYPE_DESC_ADV:
-		frame1 = proto_item_add_subtree(frame, ett_bmx6_desc_req);
+		frame_tree = proto_item_add_subtree(frame_item, ett_bmx6_desc_req);
 		break;
 	case FRAME_TYPE_OGM_ADV:
-		frame1 = proto_item_add_subtree(frame, ett_bmx6_ogm_adv);
+		frame_tree = proto_item_add_subtree(frame_item, ett_bmx6_ogm_adv);
 		break;
 	case FRAME_TYPE_OGM_ACK:
-		frame1 = proto_item_add_subtree(frame, ett_bmx6_ogm_ack);
+		frame_tree = proto_item_add_subtree(frame_item, ett_bmx6_ogm_ack);
 		break;
 	default:
 		//TODO new ett
-		frame1 = proto_item_add_subtree(frame, ett_bmx6_hello_adv);
+		frame_tree = proto_item_add_subtree(frame_item, ett_bmx6_hello_adv);
 		break;
 	}
 	
 	//Frame header:text(bmx_tree, tvb, offset, -1, "Frame [%u]: ", i);
-	fh_item = proto_tree_add_text(frame1, tvb, offset, -1, "Frame header: ");
-	frame_header= proto_item_add_subtree(fh_item, ett_bmx6_frame_header);
+	header_item = proto_tree_add_text(frame_tree, tvb, offset, -1, "Frame header: ");
+	header_tree = proto_item_add_subtree(header_item, ett_bmx6_frame_header);
 	//is_short
 	bit_offset = offset*8;
-	ti = proto_tree_add_bits_item(frame_header, hf_bmx6_frame_is_short, tvb, bit_offset, 1, FALSE);
+	is_short = tvb_get_bits8(tvb, bit_offset, 1);
+	proto_tree_add_bits_item(header_tree, hf_bmx6_frame_is_short, tvb, bit_offset, 1, FALSE);
 	//is_relevant
-	proto_tree_add_bits_item(frame_header, hf_bmx6_frame_is_relevant, tvb, bit_offset+1, 1, FALSE);
+	proto_tree_add_bits_item(header_tree, hf_bmx6_frame_is_relevant, tvb, bit_offset+1, 1, FALSE);
 	//type
-	proto_tree_add_item(frame_header, hf_bmx6_frame_type, tvb, offset, 1, ENC_BIG_ENDIAN);
+	proto_tree_add_item(header_tree, hf_bmx6_frame_type, tvb, offset, 1, ENC_BIG_ENDIAN);
 	offset++;
 	
 	//length
-	if(ti->finfo->value.value.uinteger){
+	if(is_short){
 		length = tvb_get_guint8(tvb, offset);
-		proto_tree_add_item(frame_header, hf_bmx6_frame_length8, tvb, offset, 1, ENC_BIG_ENDIAN);
+		proto_tree_add_item(header_tree, hf_bmx6_frame_length8, tvb, offset, 1, ENC_BIG_ENDIAN);
 		offset++;
 		header_length = FRAME_HEADER_SHORT_LEN;
 	}else{
-		//reserved
-		proto_tree_add_item(frame_header, hf_bmx6_reserved_length, tvb, offset, 1, ENC_BIG_ENDIAN);
+		//TODO reserved
+		proto_tree_add_text(header_tree, tvb, offset, 1, "Reserved bytes");
 		offset++;
 		length = tvb_get_ntohs(tvb, offset);
-		proto_tree_add_item(frame_header, hf_bmx6_frame_length16, tvb, offset, 2, ENC_BIG_ENDIAN);
+		proto_tree_add_item(header_tree, hf_bmx6_frame_length16, tvb, offset, 2, ENC_BIG_ENDIAN);
 		offset+=2;
 		header_length = FRAME_HEADER_LONG_LEN;
 	}
-	proto_item_set_len(fh_item, header_length);
-	proto_item_set_len(frame, length);
 	
+	proto_item_set_len(header_item, header_length);
+	proto_item_set_len(frame_item, length);
 	
 	switch(type) {
 	case FRAME_TYPE_HELLO_ADV:
-		dissect_hello_adv(tvb, frame1, offset, version);
+		dissect_hello_adv(tvb, frame_tree, offset, version);
 		break;
 	case FRAME_TYPE_LINK_REQ:
-		dissect_link_req(tvb, frame1, offset);
+		dissect_link_req(tvb, frame_tree, offset);
 		break;
 	case FRAME_TYPE_LINK_ADV:
 		num = (length - header_length) / MSG_LINK_ADV_SZ;
 		//Length = 2 (frame_hdr) + 2 (link_hdr) + 6 * N_links
-		dissect_link_adv(tvb, frame1, offset, (length -4)/6);
+		dissect_link_adv(tvb, frame_tree, offset, (length -4)/6);
 		break;
 	case FRAME_TYPE_DEV_REQ:
-		dissect_dev_req(tvb, frame1, offset);
+		dissect_dev_req(tvb, frame_tree, offset);
 		break;
 	case FRAME_TYPE_DEV_ADV:
 		num = (length - header_length) / MSG_DEV_ADV_SZ;
-		dissect_dev_adv(tvb, frame1, offset, num);
+		dissect_dev_adv(tvb, frame_tree, offset, num);
 		break;
 	case FRAME_TYPE_HASH_REQ:
-		dissect_hash_req(tvb, frame1, offset, (length -6)/2);
+		dissect_hash_req(tvb, frame_tree, offset, (length -6)/2);
 		break;
 	case FRAME_TYPE_HASH_ADV:
-		dissect_hash_adv(tvb, frame1, offset);
+		dissect_hash_adv(tvb, frame_tree, offset);
 		break;
 	case FRAME_TYPE_DESC_REQ:
-		dissect_hash_req(tvb, frame1, offset, (length -6)/2);
+		dissect_hash_req(tvb, frame_tree, offset, (length -6)/2);
 		break;
 	case FRAME_TYPE_DESC_ADV:
 		if(version >= 16)
-			dissect_desc_adv16(tvb,frame1,offset);
+			dissect_desc_adv16(tvb,frame_tree,offset);
 		else
-			dissect_desc_adv(tvb, frame1, offset);
+			dissect_desc_adv(tvb, frame_tree, offset);
 		break;
 	case FRAME_TYPE_OGM_ADV:
-		dissect_ogm_adv(tvb, frame1, offset, (length -2)/4);
+		dissect_ogm_adv(tvb, frame_tree, offset, (length -2)/4);
 		break;
 	case FRAME_TYPE_OGM_ACK:
-		dissect_ogm_ack(tvb, frame1, offset);
+		dissect_ogm_ack(tvb, frame_tree, offset);
 		break;
 	default:
 		break;
 	}
+	
 	return initial+length;
 }
 
@@ -786,7 +790,7 @@ dissect_bmx6(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 		proto_tree_add_item(bmx_tree, hf_bmx6_dev_idx, tvb, offset, 1, ENC_BIG_ENDIAN);
 		offset +=1;
 		
-		/* Do frames */
+   		/* Do frames */
 		i=1;
 		while(tvb_length(tvb) - offset >0 ){
 			//Create frame tree:
@@ -794,6 +798,7 @@ dissect_bmx6(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 			offset = dissect_bmx6_frame(tvb, bmx_sub_item, version, offset);
 			i++;
 		}
+
     }
 }
 

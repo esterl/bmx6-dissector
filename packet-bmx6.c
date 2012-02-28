@@ -406,7 +406,6 @@ dissect_bmx6_tlv(tvbuff_t *tvb, proto_item *tlv_item, int offset){
 		break;
 	}
 	
-	proto_tree_add_text(tlv, tvb, offset-1, 1, "Fin_tlv dissection");
 	return length;
 }
 
@@ -482,7 +481,6 @@ dissect_desc_adv16(tvbuff_t *tvb, proto_tree *tree, int offset){
 		processed +=n;
 		i++;
 	}
-	proto_tree_add_text(tree, tvb, offset-1, 1, "fin desc dissection");
 }
 
 static void

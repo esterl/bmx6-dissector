@@ -73,7 +73,8 @@ typedef uint8_t  FRAME_TYPE_T;
 
 #define MSG_DEV_ADV_SZ	26
 #define MSG_LINK_ADV_SZ	6
-#define HASH_SHA1_LEN 20
+#define HASH_SHA1_LEN	20
+#define MSG_DESC_ADV_SZ	HASH_SHA1_LEN+DESCRIPTION0_ID_NAME_LEN+18
 
 /** OGM_ADV and ACK Frames **/
 typedef guint8 AGGREG_SQN_T;
